@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Messages — ACITY CONNECT</title>
+  <link rel="stylesheet" href="../css/main.css" />
+</head>
+<body>
+<div id="app">
+  <div class="messages-layout">
+    <!-- Conversations List -->
+    <div class="conversations-list" id="conversations-list">
+      <div style="padding:14px 16px; border-bottom:1px solid var(--border); font-weight:600; font-size:14px;">
+        💬 Conversations
+      </div>
+      <div id="convos-container">
+        <div class="loading-overlay"><div class="spinner"></div></div>
+      </div>
+    </div>
+
+    <!-- Message Thread -->
+    <div class="message-thread" id="message-thread">
+      <div style="display:flex;align-items:center;justify-content:center;height:100%;
+                  color:var(--text-muted);flex-direction:column;gap:12px;">
+        <div style="font-size:48px;">💬</div>
+        <div>Select a conversation to start messaging</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script src="../js/layout.js"></script>
+<script>
+  if (!requireAuth()) throw new Error();
+  buildLayout('Messages');
+
+  const currentUser = api.getUser();
+  let activeUserId  = null;
+  let pollInterval  = null;
+
+  // Check if opened with a specific user
+  const params = new URLSearchParams(window.location.search);
+  const preloadUser = params.get('user');
+
+  async function loadConversations() {
+    const res = await api.getConversations();
+    const container = document.getElementById('convos-container');
+
+    if (!res.ok || res.data.conversations.length === 0) {
+      container.innerHTML = `
+        <div style="padding:20px; text-align:center; color:var(--text-muted); font-size:13px;">
+          No conversations yet.<br>Express interest in a listing to start chatting!
+        </div>`;
+      // If preloaded user but no history yet, still open that thread
+      if (preloadUser) openConversation(parseInt(preloadUser), 'New Conversation');
+      return;
+    }
+
+    container.innerHTML = res.data.conversations.map(c => `
+      <div class="conversation-item ${activeUserId === c.conversation_partner_id ? 'active' : ''}"
+           id="convo-${c.conversation_partner_id}"
+           onclick="openConversation(${c.conversation_partner_id}, '${c.partner_name}')">
+        <div class="avatar avatar-md">${avatarInitials(c.partner_name)}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-weight:600;font-size:14px;">${c.partner_name}</span>
+            <span style="font-size:11px;color:var(--text-muted);">${timeAgo(c.last_message_at)}</span>
+          </div>
+          <div style="font-size:13px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+            ${c.last_sender_id === currentUser.id ? 'You: ' : ''}${c.last_message}
+          </div>
+          ${parseInt(c.unread_count) > 0 ? `<span class="badge" style="background:var(--primary);color:#fff;font-size:10px;">${c.unread_count}</span>` : ''}
+        </div>
+      </div>`).join('');
+
+    if (preloadUser && !activeUserId) {
+      const match = res.data.conversations.find(c => c.conversation_partner_id === parseInt(preloadUser));
+      if (match) openConversation(match.conversation_partner_id, match.partner_name);
+      else openConversation(parseInt(preloadUser), 'New Conversation');
+    }
+  }
+
+  async function openConversation(userId, name) {
+    activeUserId = userId;
+    clearInterval(pollInterval);
+
+    // Highlight active convo
+    document.querySelectorAll('.conversation-item').forEach(el => el.classList.remove('active'));
+    const el = document.getElementById(`convo-${userId}`);
+    if (el) el.classList.add('active');
+
+    // Render thread shell
+    document.getElementById('message-thread').innerHTML = `
+      <div class="message-thread-header">
+        <div class="avatar avatar-sm">${avatarInitials(name)}</div>
+        <div>
+          <div style="font-weight:600;font-size:14px;">${name}</div>
+          <div class="text-xs text-muted">ACity Student</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" style="margin-left:auto;"
+                onclick="navigate('profile.html?id=${userId}')">View Profile</button>
+      </div>
+      <div class="messages-list" id="messages-list"></div>
+      <div class="message-input-area">
+        <input type="text" id="msg-input" class="form-control"
+               placeholder="Type a message..."
+               onkeydown="if(event.key==='Enter') sendMsg()" />
+        <button class="btn btn-primary" onclick="sendMsg()">Send</button>
+      </div>`;
+
+    await fetchMessages(userId);
+    pollInterval = setInterval(() => fetchMessages(userId), 5000); // Poll every 5s
+  }
+
+  async function fetchMessages(userId) {
+    const res = await api.getMessages(userId);
+    if (!res.ok) return;
+
+    const list = document.getElementById('messages-list');
+    if (!list) return;
+
+    const scrolledToBottom = list.scrollHeight - list.clientHeight <= list.scrollTop + 5;
+
+    list.innerHTML = res.data.messages.map(m => {
+      const isSent = m.sender_id === currentUser.id;
+      return `
+        <div style="display:flex;flex-direction:column;align-items:${isSent?'flex-end':'flex-start'};">
+          <div class="message-bubble ${isSent?'sent':'received'}">${m.content}</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:2px;padding:0 4px;">
+            ${timeAgo(m.created_at)}
+          </div>
+        </div>`;
+    }).join('');
+
+    if (scrolledToBottom || res.data.messages.length < 5) {
+      list.scrollTop = list.scrollHeight;
+    }
+  }
+
+  async function sendMsg() {
+    const input = document.getElementById('msg-input');
+    const content = input.value.trim();
+    if (!content || !activeUserId) return;
+
+    input.value = '';
+    const res = await api.sendMessage(activeUserId, content);
+    if (res.ok) {
+      await fetchMessages(activeUserId);
+      loadConversations();
+    }
+  }
+
+  loadConversations();
+</script>
+</body>
+</html>

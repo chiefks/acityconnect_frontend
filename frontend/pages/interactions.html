@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Interactions — ACITY CONNECT</title>
+  <link rel="stylesheet" href="../css/main.css" />
+</head>
+<body>
+<div id="app">
+  <div id="alert-box" style="margin-bottom:12px;"></div>
+
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab(this,'received')">📥 Received Requests</button>
+    <button class="tab-btn" onclick="switchTab(this,'sent')">📤 Sent Requests</button>
+  </div>
+
+  <div id="interactions-container">
+    <div class="loading-overlay"><div class="spinner"></div></div>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script src="../js/layout.js"></script>
+<script>
+  if (!requireAuth()) throw new Error();
+  buildLayout('Interactions');
+
+  let data = { sent: [], received: [] };
+  let currentTab = 'received';
+
+  const statusColor = { pending:'warning', accepted:'success', rejected:'danger', completed:'info' };
+
+  async function loadInteractions() {
+    const res = await api.getMyInteractions();
+    if (!res.ok) return;
+    data = res.data;
+    renderTab();
+  }
+
+  function switchTab(el, tab) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+    currentTab = tab;
+    renderTab();
+  }
+
+  function renderTab() {
+    const list = currentTab === 'received' ? data.received : data.sent;
+    const container = document.getElementById('interactions-container');
+
+    if (list.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">${currentTab === 'received' ? '📥' : '📤'}</div>
+          <h3>No ${currentTab} requests</h3>
+          <p>${currentTab === 'received' ? 'When someone is interested in your listings, they will appear here.' : 'Listings you expressed interest in will appear here.'}</p>
+          <button class="btn btn-primary" onclick="navigate('listings.html')">Browse Marketplace</button>
+        </div>`;
+      return;
+    }
+
+    container.innerHTML = list.map(i => {
+      const isPending   = i.status === 'pending';
+      const isReceived  = currentTab === 'received';
+
+      return `
+      <div class="card" style="margin-bottom:14px; animate-fade-in">
+        <div class="flex items-center justify-between" style="flex-wrap:wrap; gap:12px;">
+          <div class="flex items-center gap-3">
+            <div class="avatar avatar-md">
+              ${avatarInitials(isReceived ? i.sender_name : i.receiver_name)}
+            </div>
+            <div>
+              <div style="font-weight:600;">${isReceived ? i.sender_name : i.receiver_name}</div>
+              <div class="text-sm text-muted">
+                ${isReceived ? 'interested in' : 'You expressed interest in'}
+                <a href="listing-detail.html?id=${i.listing_id}" style="color:var(--primary);font-weight:500;">
+                  ${i.listing_title}
+                </a>
+              </div>
+              ${i.message ? `<div class="text-sm" style="margin-top:4px;font-style:italic;color:var(--text-secondary);">"${i.message}"</div>` : ''}
+              <div class="text-xs text-muted mt-1">${timeAgo(i.created_at)}</div>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2" style="flex-wrap:wrap;">
+            <span class="badge badge-${statusColor[i.status] || 'pending'}">${i.status}</span>
+            <span class="badge badge-${i.category}">${i.category}</span>
+
+            ${isReceived && isPending ? `
+              <button class="btn btn-primary btn-sm" onclick="respond(${i.id},'accepted')">✅ Accept</button>
+              <button class="btn btn-ghost btn-sm" onclick="respond(${i.id},'rejected')">✕ Decline</button>
+            ` : ''}
+            ${isReceived && i.status === 'accepted' ? `
+              <button class="btn btn-accent btn-sm" onclick="respond(${i.id},'completed')">🎉 Mark Complete</button>
+              <button class="btn btn-outline btn-sm" onclick="navigate('messages.html?user=${i.sender_id}')">💬 Message</button>
+            ` : ''}
+            ${!isReceived ? `
+              <button class="btn btn-ghost btn-sm" onclick="navigate('messages.html?user=${i.receiver_id}')">💬 Message</button>
+            ` : ''}
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  async function respond(id, status) {
+    const res = await api.updateInteraction(id, status);
+    if (res.ok) {
+      showAlert(document.getElementById('alert-box'), 'success',
+        status === 'accepted' ? 'Request accepted! 🎉' :
+        status === 'completed' ? 'Marked as completed!' :
+        'Request declined.');
+      loadInteractions();
+    } else {
+      showAlert(document.getElementById('alert-box'), 'danger', res.data.message);
+    }
+  }
+
+  loadInteractions();
+</script>
+</body>
+</html>

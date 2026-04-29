@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Create Listing — ACITY CONNECT</title>
+  <link rel="stylesheet" href="../css/main.css" />
+</head>
+<body>
+<div id="app">
+  <div style="max-width:680px; margin:0 auto;">
+    <div class="card">
+      <h2 style="font-size:20px; font-weight:700; margin-bottom:6px;">Create a New Listing</h2>
+      <p style="color:var(--text-muted); font-size:14px; margin-bottom:24px;">
+        Post an item for sale or offer/request a skill. Your listing will be reviewed before going live.
+      </p>
+
+      <div id="alert-box"></div>
+
+      <!-- Category Selector -->
+      <div class="form-group">
+        <label class="form-label">What are you posting? *</label>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+          <div class="category-card" id="card-item" onclick="selectCategory('item')"
+            style="border:2px solid var(--border); border-radius:var(--radius-md);
+                   padding:20px; text-align:center; cursor:pointer; transition:var(--transition);">
+            <div style="font-size:36px; margin-bottom:8px;">📦</div>
+            <div style="font-weight:600;">Item</div>
+            <div style="font-size:12px; color:var(--text-muted);">Textbooks, electronics, etc.</div>
+          </div>
+          <div class="category-card" id="card-skill" onclick="selectCategory('skill')"
+            style="border:2px solid var(--border); border-radius:var(--radius-md);
+                   padding:20px; text-align:center; cursor:pointer; transition:var(--transition);">
+            <div style="font-size:36px; margin-bottom:8px;">🧠</div>
+            <div style="font-weight:600;">Skill</div>
+            <div style="font-size:12px; color:var(--text-muted);">Tutoring, design, coding, etc.</div>
+          </div>
+        </div>
+        <input type="hidden" id="category" />
+        <span class="form-error hidden" id="cat-error">Please select a category.</span>
+      </div>
+
+      <!-- Listing Type (for skill) -->
+      <div class="form-group hidden" id="skill-type-group">
+        <label class="form-label">Skill Type *</label>
+        <select id="listing_type" class="form-control">
+          <option value="offer">I'm offering this skill</option>
+          <option value="request">I'm looking for this skill</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Title *</label>
+        <input type="text" id="title" class="form-control"
+               placeholder="e.g. 'Calculus Textbook for sale' or 'Python tutoring available'" />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Description *</label>
+        <textarea id="description" class="form-control" rows="5"
+          placeholder="Describe the item condition, what's included, or your skill experience..."></textarea>
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group" id="price-group">
+          <label class="form-label">Price (GH₵)</label>
+          <input type="number" id="price" class="form-control" placeholder="Leave blank for free/exchange"
+                 min="0" step="0.01" />
+          <span class="form-hint">Leave blank for skill exchange or free items</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tags</label>
+          <input type="text" id="tags-input" class="form-control"
+                 placeholder="Press Enter to add tags" onkeydown="handleTagInput(event)" />
+          <div id="tags-display" style="margin-top:8px; display:flex; flex-wrap:wrap; gap:6px;"></div>
+        </div>
+      </div>
+
+      <div class="flex gap-3" style="justify-content:flex-end; margin-top:8px;">
+        <button class="btn btn-ghost" onclick="navigate('listings.html')">Cancel</button>
+        <button class="btn btn-primary" onclick="submitListing()" id="submit-btn">
+          Submit Listing
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script src="../js/layout.js"></script>
+<script>
+  if (!requireAuth()) throw new Error('Not authenticated');
+  buildLayout('Create Listing');
+
+  let tags = [];
+
+  function selectCategory(cat) {
+    document.getElementById('category').value = cat;
+
+    document.querySelectorAll('.category-card').forEach(c => {
+      c.style.borderColor = 'var(--border)';
+      c.style.background = 'transparent';
+    });
+
+    const card = document.getElementById(`card-${cat}`);
+    card.style.borderColor = 'var(--primary)';
+    card.style.background = 'rgba(27,77,62,0.05)';
+    document.getElementById('cat-error').classList.add('hidden');
+
+    // Show skill type selector only for skills
+    const skillGroup = document.getElementById('skill-type-group');
+    if (cat === 'skill') {
+      skillGroup.classList.remove('hidden');
+      document.getElementById('listing_type').value = 'offer';
+    } else {
+      skillGroup.classList.add('hidden');
+    }
+  }
+
+  function handleTagInput(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const val = e.target.value.trim();
+      if (val && !tags.includes(val) && tags.length < 8) {
+        tags.push(val);
+        renderTags();
+      }
+      e.target.value = '';
+    }
+  }
+
+  function removeTag(tag) {
+    tags = tags.filter(t => t !== tag);
+    renderTags();
+  }
+
+  function renderTags() {
+    document.getElementById('tags-display').innerHTML = tags.map(t => `
+      <span style="display:inline-flex;align-items:center;gap:5px;
+                   background:var(--bg);border:1px solid var(--border);
+                   padding:3px 10px;border-radius:var(--radius-full);font-size:12px;">
+        ${t}
+        <button onclick="removeTag('${t}')" type="button"
+          style="border:none;background:none;cursor:pointer;color:var(--text-muted);font-size:14px;line-height:1;">×</button>
+      </span>
+    `).join('');
+  }
+
+  async function submitListing() {
+    const alertBox = document.getElementById('alert-box');
+    const btn      = document.getElementById('submit-btn');
+
+    const category = document.getElementById('category').value;
+    const title    = document.getElementById('title').value.trim();
+    const description = document.getElementById('description').value.trim();
+    const price    = document.getElementById('price').value;
+    const listing_type = document.getElementById('listing_type')?.value || 'sale';
+
+    if (!category) {
+      document.getElementById('cat-error').classList.remove('hidden');
+      return showAlert(alertBox, 'warning', 'Please select a category (Item or Skill).');
+    }
+
+    if (!title) return showAlert(alertBox, 'warning', 'Title is required.');
+    if (!description) return showAlert(alertBox, 'warning', 'Description is required.');
+
+    btn.disabled = true;
+    btn.textContent = 'Submitting...';
+
+    const res = await api.createListing({
+      title, description, category,
+      listing_type: category === 'skill' ? listing_type : 'sale',
+      price: price ? parseFloat(price) : null,
+      tags
+    });
+
+    if (res.ok) {
+      showAlert(alertBox, 'success', 'Listing submitted! It will appear after admin approval.');
+      setTimeout(() => navigate('my-listings.html'), 1500);
+    } else {
+      showAlert(alertBox, 'danger', res.data.message);
+      btn.disabled = false;
+      btn.textContent = 'Submit Listing';
+    }
+  }
+</script>
+</body>
+</html>

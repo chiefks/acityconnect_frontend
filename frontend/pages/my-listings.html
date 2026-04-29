@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Listings — ACITY CONNECT</title>
+  <link rel="stylesheet" href="../css/main.css" />
+</head>
+<body>
+<div id="app">
+  <div class="flex items-center justify-between mb-4">
+    <div id="listing-count" style="font-size:14px;color:var(--text-muted);">Loading...</div>
+    <button class="btn btn-primary" onclick="navigate('create-listing.html')">+ New Listing</button>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab(this,'all')">All</button>
+    <button class="tab-btn" onclick="switchTab(this,'available')">Available</button>
+    <button class="tab-btn" onclick="switchTab(this,'pending')">Pending Approval</button>
+    <button class="tab-btn" onclick="switchTab(this,'sold')">Sold / Swapped</button>
+  </div>
+
+  <div id="alert-box"></div>
+  <div id="listings-container">
+    <div class="loading-overlay"><div class="spinner"></div></div>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script src="../js/layout.js"></script>
+<script>
+  if (!requireAuth()) throw new Error();
+  buildLayout('My Listings');
+
+  let allListings = [];
+  let currentTab = 'all';
+
+  async function loadMyListings() {
+    const res = await api.getMyListings();
+    if (!res.ok) {
+      document.getElementById('listings-container').innerHTML =
+        `<div class="alert alert-danger">${res.data.message}</div>`;
+      return;
+    }
+    allListings = res.data.listings;
+    renderListings();
+  }
+
+  function switchTab(el, tab) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+    currentTab = tab;
+    renderListings();
+  }
+
+  function renderListings() {
+    let filtered = allListings;
+    if (currentTab === 'available') filtered = allListings.filter(l => l.status === 'available' && l.is_approved);
+    if (currentTab === 'pending')   filtered = allListings.filter(l => !l.is_approved && !l.is_flagged);
+    if (currentTab === 'sold')      filtered = allListings.filter(l => ['sold','swapped'].includes(l.status));
+
+    document.getElementById('listing-count').textContent =
+      `${filtered.length} listing${filtered.length !== 1 ? 's' : ''}`;
+
+    const container = document.getElementById('listings-container');
+    if (filtered.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">📋</div>
+          <h3>No listings here</h3>
+          <p>Post your first item or skill to get started!</p>
+          <button class="btn btn-primary" onclick="navigate('create-listing.html')">+ Post a Listing</button>
+        </div>`;
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="listings-grid">
+        ${filtered.map(l => {
+          const emoji = getCategoryEmoji(l.category, l.title);
+          const approvalBadge = !l.is_approved && !l.is_flagged
+            ? '<span class="badge badge-pending">⏳ Awaiting Approval</span>'
+            : l.is_flagged
+            ? `<span class="badge badge-sold">🚫 Flagged${l.flag_reason ? ': ' + l.flag_reason : ''}</span>`
+            : '<span class="badge badge-available">✅ Live</span>';
+
+          return `
+          <div class="listing-card animate-fade-in">
+            <div class="listing-card-image" onclick="navigate('listing-detail.html?id=${l.id}')"
+                 style="cursor:pointer;">${emoji}</div>
+            <div class="listing-card-body">
+              <div style="margin-bottom:6px; display:flex; gap:6px; flex-wrap:wrap;">
+                <span class="badge badge-${l.category}">${l.category}</span>
+                <span class="badge badge-${l.status}">${l.status}</span>
+                ${approvalBadge}
+              </div>
+              <div class="listing-card-title" onclick="navigate('listing-detail.html?id=${l.id}')"
+                   style="cursor:pointer;">${l.title}</div>
+              <div class="listing-card-desc">${l.description}</div>
+              <div class="listing-card-footer">
+                <span class="listing-price">${formatPrice(l.price)}</span>
+                <div class="flex gap-2 text-sm text-muted">
+                  <span>🤝 ${l.interest_count || 0}</span>
+                  <span>· ${timeAgo(l.created_at)}</span>
+                </div>
+              </div>
+              <div style="margin-top:10px; display:flex; gap:8px;">
+                <button class="btn btn-outline btn-sm" onclick="navigate('edit-listing.html?id=${l.id}')">✏️ Edit</button>
+                <button class="btn btn-ghost btn-sm" onclick="navigate('interactions.html?listing=${l.id}')">🤝 Interests</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteListing(${l.id})">🗑️</button>
+              </div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`;
+  }
+
+  async function deleteListing(id) {
+    if (!confirm('Delete this listing permanently?')) return;
+    const res = await api.deleteListing(id);
+    if (res.ok) {
+      showAlert(document.getElementById('alert-box'), 'success', 'Listing deleted.');
+      allListings = allListings.filter(l => l.id !== id);
+      renderListings();
+    }
+  }
+
+  loadMyListings();
+</script>
+</body>
+</html>

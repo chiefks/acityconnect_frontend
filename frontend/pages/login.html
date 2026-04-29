@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login — ACITY CONNECT</title>
+  <link rel="stylesheet" href="../css/main.css" />
+  <style>
+    .divider { display:flex; align-items:center; gap:12px; margin:20px 0; color:var(--text-muted); font-size:13px; }
+    .divider::before, .divider::after { content:''; flex:1; height:1px; background:var(--border); }
+    .floating-shapes { position:absolute; inset:0; overflow:hidden; pointer-events:none; }
+    .shape { position:absolute; border-radius:50%; opacity:0.06; }
+    .shape-1 { width:300px; height:300px; background:#fff; top:-100px; right:-80px; }
+    .shape-2 { width:200px; height:200px; background:var(--accent); bottom:80px; left:-60px; }
+    .shape-3 { width:120px; height:120px; background:#fff; bottom:-30px; right:120px; }
+  </style>
+</head>
+<body>
+
+<div class="auth-page">
+  <!-- Left Branding Panel -->
+  <div class="auth-left" style="position:relative;">
+    <div class="floating-shapes">
+      <div class="shape shape-1"></div>
+      <div class="shape shape-2"></div>
+      <div class="shape shape-3"></div>
+    </div>
+    <div style="position:relative; z-index:1; text-align:center;">
+      <div style="font-size:52px; margin-bottom:16px;">🏫</div>
+      <div class="brand-name">ACITY CONNECT</div>
+      <div class="brand-sub">Academic City University</div>
+
+      <ul class="feature-list" style="text-align:left; margin-top:16px;">
+        <li>🛒 Buy & sell second-hand campus items</li>
+        <li>🤝 Exchange skills with fellow students</li>
+        <li>💬 Message and connect with peers</li>
+        <li>🔒 Restricted to ACity community only</li>
+      </ul>
+
+      <div style="margin-top:40px; padding:20px; background:rgba(255,255,255,0.08); border-radius:12px; font-size:13px; opacity:0.8; border:1px solid rgba(255,255,255,0.15);">
+        <div style="font-weight:600; margin-bottom:4px;">Demo Admin Account</div>
+        <div>admin@acity.edu.gh</div>
+        <div>Admin@1234</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Form Panel -->
+  <div class="auth-right">
+    <div class="auth-form-box">
+      <h2>Welcome back 👋</h2>
+      <p class="auth-subtitle">Sign in to your ACITY CONNECT account</p>
+
+      <div id="alert-box"></div>
+
+      <div class="form-group">
+        <label class="form-label">Institutional Email</label>
+        <input type="email" id="email" class="form-control"
+               placeholder="yourname@acity.edu.gh" autocomplete="email" />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <div style="position:relative;">
+          <input type="password" id="password" class="form-control"
+                 placeholder="Enter your password" autocomplete="current-password" />
+          <button onclick="togglePwd()" type="button"
+            style="position:absolute;right:10px;top:50%;transform:translateY(-50%);
+                   background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:16px;"
+            id="pwd-toggle">👁</button>
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-full btn-lg" onclick="handleLogin()" id="login-btn">
+        Sign In
+      </button>
+
+      <div class="divider">or</div>
+
+      <div style="text-align:center; font-size:14px; color:var(--text-secondary);">
+        Don't have an account?
+        <a href="register.html" style="font-weight:600; color:var(--primary);">Create one</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script>
+  // Redirect if already logged in
+  if (api.isLoggedIn()) {
+    window.location.href = 'dashboard.html';
+  }
+
+  function togglePwd() {
+    const inp = document.getElementById('password');
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+    document.getElementById('pwd-toggle').textContent = inp.type === 'password' ? '👁' : '🙈';
+  }
+
+  async function handleLogin() {
+    const email    = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const alertBox = document.getElementById('alert-box');
+    const btn      = document.getElementById('login-btn');
+
+    if (!email || !password) {
+      showAlert(alertBox, 'warning', 'Please enter your email and password.');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Signing in...';
+
+    const res = await api.login(email, password);
+
+    if (res.ok) {
+      showAlert(alertBox, 'success', `Welcome back, ${res.data.user.full_name}!`);
+      setTimeout(() => {
+        window.location.href = res.data.user.role === 'admin' ? 'admin.html' : 'dashboard.html';
+      }, 800);
+    } else {
+      showAlert(alertBox, 'danger', res.data.message);
+      btn.disabled = false;
+      btn.textContent = 'Sign In';
+    }
+  }
+
+  // Enter key to submit
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter') handleLogin();
+  });
+</script>
+</body>
+</html>

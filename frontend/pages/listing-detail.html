@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Listing Detail — ACITY CONNECT</title>
+  <link rel="stylesheet" href="../css/main.css" />
+</head>
+<body>
+<div id="app">
+  <div id="listing-content">
+    <div class="loading-overlay"><div class="spinner"></div></div>
+  </div>
+</div>
+
+<!-- Interest Modal -->
+<div class="modal-overlay hidden" id="interest-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Express Interest</span>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="modal-alert"></div>
+      <div class="form-group">
+        <label class="form-label">Message (Optional)</label>
+        <textarea id="interest-message" class="form-control"
+          placeholder="Introduce yourself or explain why you're interested..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitInterest()" id="interest-btn">Send Interest</button>
+    </div>
+  </div>
+</div>
+
+<!-- Message Modal -->
+<div class="modal-overlay hidden" id="message-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Send Message</span>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="msg-modal-alert"></div>
+      <div class="form-group">
+        <label class="form-label">Message</label>
+        <textarea id="direct-message" class="form-control" rows="4"
+          placeholder="Type your message..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitMessage()" id="msg-btn">Send Message</button>
+    </div>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script src="../js/layout.js"></script>
+<script>
+  if (!requireAuth()) throw new Error('Not authenticated');
+  buildLayout('Listing Detail');
+
+  const params = new URLSearchParams(window.location.search);
+  const listingId = params.get('id');
+  let currentListing = null;
+  const currentUser = api.getUser();
+
+  if (!listingId) {
+    document.getElementById('listing-content').innerHTML = `
+      <div class="alert alert-danger">No listing ID provided. <a href="listings.html">Go back to marketplace</a></div>
+    `;
+  } else {
+    loadListing();
+  }
+
+  async function loadListing() {
+    const res = await api.getListing(listingId);
+    const container = document.getElementById('listing-content');
+
+    if (!res.ok) {
+      container.innerHTML = `<div class="alert alert-danger">${res.data.message}</div>`;
+      return;
+    }
+
+    currentListing = res.data.listing;
+    const l = currentListing;
+    const isOwner = l.user_id === currentUser.id;
+    const emoji = getCategoryEmoji(l.category, l.title);
+
+    container.innerHTML = `
+      <div style="margin-bottom:16px;">
+        <button class="btn btn-ghost btn-sm" onclick="navigate('listings.html')">
+          ← Back to Marketplace
+        </button>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 340px; gap:28px; align-items:start;">
+        <!-- Main Info -->
+        <div>
+          <!-- Image/Icon -->
+          <div style="background:linear-gradient(135deg,#e8f5e9,#c8e6c9);
+                      border-radius:var(--radius-lg);height:240px;
+                      display:flex;align-items:center;justify-content:center;
+                      font-size:80px;margin-bottom:24px;border:1px solid var(--border);">
+            ${emoji}
+          </div>
+
+          <div style="margin-bottom:12px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            <span class="badge badge-${l.category}">${l.category === 'item' ? '📦 Item' : '🧠 Skill'}</span>
+            <span class="badge badge-${l.status}">${l.status}</span>
+            ${l.tags && l.tags.length ? l.tags.map(t => `<span class="badge" style="background:var(--bg);">${t}</span>`).join('') : ''}
+          </div>
+
+          <h1 style="font-size:24px; font-weight:700; margin-bottom:8px;">${l.title}</h1>
+
+          <div style="font-size:28px; font-weight:800; color:var(--primary); margin-bottom:16px;">
+            ${formatPrice(l.price)}
+          </div>
+
+          <div class="card" style="margin-bottom:20px;">
+            <h3 style="font-size:14px; text-transform:uppercase; letter-spacing:.5px;
+                       color:var(--text-muted); margin-bottom:10px;">Description</h3>
+            <p style="line-height:1.8; color:var(--text-primary);">${l.description}</p>
+          </div>
+
+          <div class="card">
+            <div class="flex items-center gap-3" style="flex-wrap:wrap;">
+              <div class="flex gap-2 text-sm text-muted">
+                <span>👁 ${l.view_count || 1} views</span>
+                <span>·</span>
+                <span>🤝 ${l.interest_count} interested</span>
+                <span>·</span>
+                <span>🕒 ${timeAgo(l.created_at)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sidebar Actions -->
+        <div>
+          <!-- Seller Card -->
+          <div class="card" style="margin-bottom:16px;">
+            <h3 style="font-size:13px; text-transform:uppercase; letter-spacing:.5px;
+                       color:var(--text-muted); margin-bottom:14px;">Posted by</h3>
+            <div class="flex items-center gap-3" style="margin-bottom:14px;">
+              <div class="avatar avatar-md">${avatarInitials(l.full_name)}</div>
+              <div>
+                <div style="font-weight:600;">${l.full_name}</div>
+                <div class="text-sm text-muted">${l.department || 'ACity Student'}</div>
+              </div>
+            </div>
+
+            ${l.bio ? `<p style="font-size:13px; color:var(--text-secondary); line-height:1.6; margin-bottom:14px;">${l.bio}</p>` : ''}
+
+            ${l.skills_offered && l.skills_offered.length ? `
+              <div style="margin-bottom:10px;">
+                <div style="font-size:11px; text-transform:uppercase; letter-spacing:.5px;
+                             color:var(--text-muted); margin-bottom:6px;">Skills Offered</div>
+                <div>${l.skills_offered.map(s => `<span class="skill-tag offered">${s}</span>`).join('')}</div>
+              </div>
+            ` : ''}
+
+            ${!isOwner ? `
+              <button class="btn btn-ghost btn-full btn-sm" onclick="navigate('profile.html?id=${l.user_id}')">
+                View Full Profile
+              </button>
+            ` : ''}
+          </div>
+
+          <!-- Action Buttons -->
+          ${isOwner ? `
+            <div class="card">
+              <h3 style="font-size:13px; font-weight:600; margin-bottom:12px;">Manage Your Listing</h3>
+              <div style="display:flex; flex-direction:column; gap:8px;">
+                <button class="btn btn-outline btn-full" onclick="navigate('edit-listing.html?id=${l.id}')">
+                  ✏️ Edit Listing
+                </button>
+                <button class="btn btn-ghost btn-full" onclick="navigate('interactions.html?listing=${l.id}')">
+                  🤝 View Interests (${l.interest_count})
+                </button>
+                <button class="btn btn-danger btn-full btn-sm" onclick="confirmDelete(${l.id})">
+                  🗑️ Delete Listing
+                </button>
+              </div>
+            </div>
+          ` : l.status !== 'available' ? `
+            <div class="alert alert-warning">This listing is no longer available (${l.status}).</div>
+          ` : `
+            <div class="card">
+              <h3 style="font-size:13px; font-weight:600; margin-bottom:12px;">Interested?</h3>
+              <div style="display:flex; flex-direction:column; gap:8px;">
+                <button class="btn btn-primary btn-full" id="express-interest-btn" onclick="openInterestModal()">
+                  🤝 Express Interest
+                </button>
+                <button class="btn btn-outline btn-full" onclick="openMessageModal()">
+                  💬 Send Direct Message
+                </button>
+              </div>
+              <div id="action-alert" style="margin-top:10px;"></div>
+            </div>
+          `}
+        </div>
+      </div>
+    `;
+  }
+
+  function openInterestModal() {
+    document.getElementById('interest-modal').classList.remove('hidden');
+  }
+
+  function openMessageModal() {
+    document.getElementById('message-modal').classList.remove('hidden');
+  }
+
+  function closeModal() {
+    document.getElementById('interest-modal').classList.add('hidden');
+    document.getElementById('message-modal').classList.add('hidden');
+  }
+
+  async function submitInterest() {
+    const message = document.getElementById('interest-message').value;
+    const btn = document.getElementById('interest-btn');
+    btn.disabled = true;
+    btn.textContent = 'Sending...';
+
+    const res = await api.expressInterest(parseInt(listingId), message);
+    if (res.ok) {
+      closeModal();
+      showAlert(document.getElementById('action-alert'), 'success', 'Interest expressed! The owner will be notified.');
+      document.getElementById('express-interest-btn').disabled = true;
+      document.getElementById('express-interest-btn').textContent = '✅ Interest Sent';
+    } else {
+      showAlert(document.getElementById('modal-alert'), 'danger', res.data.message);
+      btn.disabled = false;
+      btn.textContent = 'Send Interest';
+    }
+  }
+
+  async function submitMessage() {
+    const content = document.getElementById('direct-message').value.trim();
+    const btn = document.getElementById('msg-btn');
+    if (!content) return showAlert(document.getElementById('msg-modal-alert'), 'warning', 'Message cannot be empty.');
+
+    btn.disabled = true;
+    btn.textContent = 'Sending...';
+
+    const res = await api.sendMessage(currentListing.user_id, content);
+    if (res.ok) {
+      closeModal();
+      navigate('messages.html');
+    } else {
+      showAlert(document.getElementById('msg-modal-alert'), 'danger', res.data.message);
+      btn.disabled = false;
+      btn.textContent = 'Send Message';
+    }
+  }
+
+  async function confirmDelete(id) {
+    if (!confirm('Are you sure you want to delete this listing? This cannot be undone.')) return;
+    const res = await api.deleteListing(id);
+    if (res.ok) {
+      alert('Listing deleted.');
+      navigate('my-listings.html');
+    }
+  }
+</script>
+</body>
+</html>

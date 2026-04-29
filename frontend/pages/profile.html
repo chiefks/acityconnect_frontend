@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Profile — ACITY CONNECT</title>
+  <link rel="stylesheet" href="../css/main.css" />
+</head>
+<body>
+<div id="app">
+  <div id="profile-content">
+    <div class="loading-overlay"><div class="spinner"></div></div>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script src="../js/layout.js"></script>
+<script>
+  if (!requireAuth()) throw new Error();
+  buildLayout('My Profile');
+
+  const params = new URLSearchParams(window.location.search);
+  const viewId = params.get('id'); // If viewing another user's profile
+  const currentUser = api.getUser();
+  const isOwnProfile = !viewId || parseInt(viewId) === currentUser.id;
+
+  let skillsOffered = [];
+  let skillsNeeded  = [];
+
+  async function loadProfile() {
+    let user;
+    if (isOwnProfile) {
+      const res = await api.get('/auth/me');
+      if (!res.ok) return;
+      user = res.data.user;
+      skillsOffered = user.skills_offered || [];
+      skillsNeeded  = user.skills_needed  || [];
+    } else {
+      const res = await api.getProfile(viewId);
+      if (!res.ok) return;
+      user = res.data.user;
+      skillsOffered = user.skills_offered || [];
+      skillsNeeded  = user.skills_needed  || [];
+    }
+
+    renderProfile(user);
+  }
+
+  function renderProfile(user) {
+    const container = document.getElementById('profile-content');
+    const isEditable = isOwnProfile;
+
+    container.innerHTML = `
+      <div id="alert-box" style="max-width:720px;margin:0 auto 16px;"></div>
+      <div style="max-width:720px; margin:0 auto;">
+
+        <!-- Profile Header Banner -->
+        <div class="profile-header">
+          <div class="flex items-center gap-4">
+            <div class="avatar avatar-xl">${avatarInitials(user.full_name)}</div>
+            <div>
+              <h2 style="font-size:24px;">${user.full_name}</h2>
+              <div style="opacity:0.75; font-size:14px; margin-top:4px;">
+                ${user.department || 'Academic City University'}
+                ${user.year_of_study ? ' · ' + user.year_of_study : ''}
+              </div>
+              <div style="opacity:0.6; font-size:12px; margin-top:4px;">
+                Member since ${new Date(user.created_at).toLocaleDateString('en-GB', {month:'long',year:'numeric'})}
+                ${user.listings_count !== undefined ? ' · ' + user.listings_count + ' listing(s)' : ''}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bio -->
+        ${isEditable ? `
+        <div class="card" style="margin-bottom:20px;">
+          <div class="flex items-center justify-between" style="margin-bottom:14px;">
+            <h3 style="font-size:16px;">About Me</h3>
+            <button class="btn btn-outline btn-sm" id="edit-toggle" onclick="toggleEdit()">✏️ Edit Profile</button>
+          </div>
+
+          <!-- View Mode -->
+          <div id="view-mode">
+            <p style="color:var(--text-secondary); line-height:1.7;">
+              ${user.bio || '<em style="color:var(--text-muted)">No bio yet. Click Edit Profile to add one.</em>'}
+            </p>
+            <div style="margin-top:16px; display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+              <div>
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:8px;">✅ Skills I Offer</div>
+                <div id="view-offered">
+                  ${skillsOffered.length ? skillsOffered.map(s => `<span class="skill-tag offered">${s}</span>`).join('') : '<em style="font-size:13px;color:var(--text-muted)">None listed</em>'}
+                </div>
+              </div>
+              <div>
+                <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:8px;">🔍 Skills I Need</div>
+                <div id="view-needed">
+                  ${skillsNeeded.length ? skillsNeeded.map(s => `<span class="skill-tag needed">${s}</span>`).join('') : '<em style="font-size:13px;color:var(--text-muted)">None listed</em>'}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Edit Mode -->
+          <div id="edit-mode" class="hidden">
+            <div class="grid-2">
+              <div class="form-group">
+                <label class="form-label">Full Name</label>
+                <input id="edit-name" class="form-control" value="${user.full_name}" />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Department</label>
+                <select id="edit-dept" class="form-control">
+                  <option value="">Select department</option>
+                  ${['Computer Science','Information Technology','Business Administration','Engineering','Law','Liberal Arts','Sciences','Other'].map(d => `<option ${user.department===d?'selected':''}>${d}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Year of Study</label>
+              <select id="edit-year" class="form-control">
+                <option value="">Select year</option>
+                ${['Year 1','Year 2','Year 3','Year 4','Postgraduate'].map(y => `<option ${user.year_of_study===y?'selected':''}>${y}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Bio</label>
+              <textarea id="edit-bio" class="form-control" rows="3">${user.bio||''}</textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Skills I Offer (press Enter to add)</label>
+              <input id="offered-input" class="form-control" placeholder="e.g. Python, Graphic Design..."
+                     onkeydown="addSkill(event,'offered')" />
+              <div id="offered-tags" style="margin-top:8px;"></div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Skills I Need (press Enter to add)</label>
+              <input id="needed-input" class="form-control" placeholder="e.g. Accounting, French..."
+                     onkeydown="addSkill(event,'needed')" />
+              <div id="needed-tags" style="margin-top:8px;"></div>
+            </div>
+            <div class="flex gap-3" style="justify-content:flex-end;">
+              <button class="btn btn-ghost" onclick="toggleEdit()">Cancel</button>
+              <button class="btn btn-primary" onclick="saveProfile()" id="save-btn">Save Changes</button>
+            </div>
+          </div>
+        </div>
+        ` : `
+        <div class="card" style="margin-bottom:20px;">
+          <div class="flex items-center justify-between" style="margin-bottom:14px;">
+            <h3 style="font-size:16px;">About</h3>
+            <button class="btn btn-primary btn-sm" onclick="startMessage(${user.id})">💬 Message</button>
+          </div>
+          <p style="color:var(--text-secondary);">${user.bio || 'No bio available.'}</p>
+          <div style="margin-top:16px; display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div>
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:8px;">Skills Offered</div>
+              <div>${skillsOffered.length ? skillsOffered.map(s=>`<span class="skill-tag offered">${s}</span>`).join('') : '<em style="font-size:13px;color:var(--text-muted)">None</em>'}</div>
+            </div>
+            <div>
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:8px;">Skills Needed</div>
+              <div>${skillsNeeded.length ? skillsNeeded.map(s=>`<span class="skill-tag needed">${s}</span>`).join('') : '<em style="font-size:13px;color:var(--text-muted)">None</em>'}</div>
+            </div>
+          </div>
+        </div>
+        `}
+
+        <!-- User's Listings -->
+        <div>
+          <h3 style="font-size:16px; margin-bottom:16px;">
+            ${isOwnProfile ? 'My' : user.full_name.split(' ')[0] + "'s"} Listings
+          </h3>
+          <div id="user-listings">
+            <div class="loading-overlay"><div class="spinner"></div></div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    if (isEditable) {
+      renderSkillTags('offered');
+      renderSkillTags('needed');
+    }
+
+    loadUserListings(isOwnProfile ? currentUser.id : viewId);
+  }
+
+  function toggleEdit() {
+    const editMode = document.getElementById('edit-mode');
+    const viewMode = document.getElementById('view-mode');
+    const btn      = document.getElementById('edit-toggle');
+    const isEditing = !editMode.classList.contains('hidden');
+    editMode.classList.toggle('hidden', isEditing);
+    viewMode.classList.toggle('hidden', !isEditing);
+    btn.textContent = isEditing ? '✏️ Edit Profile' : '✕ Cancel';
+  }
+
+  function addSkill(e, type) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const input = document.getElementById(`${type}-input`);
+    const val   = input.value.trim();
+    const arr   = type === 'offered' ? skillsOffered : skillsNeeded;
+    if (val && !arr.includes(val)) { arr.push(val); renderSkillTags(type); }
+    input.value = '';
+  }
+
+  function removeSkill(type, skill) {
+    if (type === 'offered') skillsOffered = skillsOffered.filter(s => s !== skill);
+    else skillsNeeded = skillsNeeded.filter(s => s !== skill);
+    renderSkillTags(type);
+  }
+
+  function renderSkillTags(type) {
+    const arr = type === 'offered' ? skillsOffered : skillsNeeded;
+    const container = document.getElementById(`${type}-tags`);
+    if (!container) return;
+    container.innerHTML = arr.map(s => `
+      <span style="display:inline-flex;align-items:center;gap:5px;
+                   background:var(--bg);border:1px solid var(--border);
+                   padding:3px 10px;border-radius:999px;font-size:12px;margin:2px;">
+        ${s}
+        <button onclick="removeSkill('${type}','${s}')" type="button"
+          style="border:none;background:none;cursor:pointer;color:var(--text-muted);font-size:14px;">×</button>
+      </span>`).join('');
+  }
+
+  async function saveProfile() {
+    const btn = document.getElementById('save-btn');
+    btn.disabled = true; btn.textContent = 'Saving...';
+
+    const res = await api.updateProfile({
+      full_name:     document.getElementById('edit-name').value.trim(),
+      bio:           document.getElementById('edit-bio').value.trim(),
+      department:    document.getElementById('edit-dept').value,
+      year_of_study: document.getElementById('edit-year').value,
+      skills_offered: skillsOffered,
+      skills_needed:  skillsNeeded,
+    });
+
+    if (res.ok) {
+      api.setUser({ ...api.getUser(), ...res.data.user });
+      showAlert(document.getElementById('alert-box'), 'success', 'Profile updated!');
+      loadProfile();
+    } else {
+      showAlert(document.getElementById('alert-box'), 'danger', res.data.message);
+    }
+
+    btn.disabled = false; btn.textContent = 'Save Changes';
+  }
+
+  async function loadUserListings(uid) {
+    const res = await api.getUserListings(uid);
+    const container = document.getElementById('user-listings');
+    if (!res.ok || res.data.listings.length === 0) {
+      container.innerHTML = '<div class="text-sm text-muted">No listings yet.</div>';
+      return;
+    }
+    container.innerHTML = `<div class="listings-grid">
+      ${res.data.listings.slice(0, 6).map(l => `
+        <div class="listing-card" onclick="navigate('listing-detail.html?id=${l.id}')">
+          <div class="listing-card-image">${getCategoryEmoji(l.category, l.title)}</div>
+          <div class="listing-card-body">
+            <span class="badge badge-${l.category}">${l.category}</span>
+            <span class="badge badge-${l.status}" style="margin-left:4px;">${l.status}</span>
+            <div class="listing-card-title">${l.title}</div>
+            <div class="listing-price">${formatPrice(l.price)}</div>
+          </div>
+        </div>`).join('')}
+    </div>`;
+  }
+
+  function startMessage(userId) {
+    navigate('messages.html?user=' + userId);
+  }
+
+  loadProfile();
+</script>
+</body>
+</html>

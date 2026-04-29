@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Marketplace — ACITY CONNECT</title>
+  <link rel="stylesheet" href="../css/main.css" />
+</head>
+<body>
+<div id="app">
+  <!-- Search + Filters -->
+  <div class="card mb-4">
+    <div style="display:grid; grid-template-columns: 1fr auto auto auto; gap:12px; align-items:center;">
+      <div class="search-bar">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="search-input" class="form-control" placeholder="Search listings, skills, items..."
+               oninput="debounceSearch()" />
+      </div>
+      <select id="filter-category" class="form-control" onchange="loadListings()" style="width:auto;">
+        <option value="">All Categories</option>
+        <option value="item">Items</option>
+        <option value="skill">Skills</option>
+      </select>
+      <select id="filter-status" class="form-control" onchange="loadListings()" style="width:auto;">
+        <option value="">All Status</option>
+        <option value="available">Available</option>
+        <option value="sold">Sold</option>
+        <option value="swapped">Swapped</option>
+      </select>
+      <button class="btn btn-primary" onclick="navigate('create-listing.html')">+ Post</button>
+    </div>
+
+    <!-- Active Filters -->
+    <div class="filter-bar" style="margin-top:12px; margin-bottom:0;" id="filter-chips">
+      <span class="filter-chip active" data-cat="" onclick="setCategory(this, '')">All</span>
+      <span class="filter-chip" data-cat="item" onclick="setCategory(this, 'item')">📦 Items</span>
+      <span class="filter-chip" data-cat="skill" onclick="setCategory(this, 'skill')">🧠 Skills</span>
+    </div>
+  </div>
+
+  <!-- Results count -->
+  <div class="flex items-center justify-between mb-4">
+    <div style="font-size:14px; color:var(--text-secondary);" id="results-count">Loading listings...</div>
+  </div>
+
+  <!-- Listings Grid -->
+  <div id="listings-container">
+    <div class="loading-overlay"><div class="spinner"></div></div>
+  </div>
+
+  <!-- Pagination -->
+  <div id="pagination"></div>
+</div>
+
+<script src="../js/api.js"></script>
+<script src="../js/layout.js"></script>
+<script>
+  if (!requireAuth()) throw new Error('Not authenticated');
+  buildLayout('Marketplace');
+
+  let currentPage = 1;
+  let searchTimeout;
+  const LIMIT = 12;
+
+  function debounceSearch() {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => { currentPage = 1; loadListings(); }, 400);
+  }
+
+  function setCategory(el, cat) {
+    document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('filter-category').value = cat;
+    currentPage = 1;
+    loadListings();
+  }
+
+  async function loadListings() {
+    const search   = document.getElementById('search-input').value.trim();
+    const category = document.getElementById('filter-category').value;
+    const status   = document.getElementById('filter-status').value;
+
+    const container = document.getElementById('listings-container');
+    container.innerHTML = '<div class="loading-overlay"><div class="spinner"></div></div>';
+
+    const params = { page: currentPage, limit: LIMIT };
+    if (search)   params.search = search;
+    if (category) params.category = category;
+    if (status)   params.status = status;
+
+    const res = await api.getListings(params);
+
+    if (!res.ok) {
+      container.innerHTML = `<div class="alert alert-danger">Failed to load listings: ${res.data.message}</div>`;
+      return;
+    }
+
+    const { listings, pagination } = res.data;
+
+    // Update count
+    document.getElementById('results-count').textContent =
+      `${pagination.total} listing${pagination.total !== 1 ? 's' : ''} found`;
+
+    if (listings.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">🛒</div>
+          <h3>No listings found</h3>
+          <p>Try adjusting your search or filters</p>
+          <button class="btn btn-primary" onclick="navigate('create-listing.html')">Post a Listing</button>
+        </div>
+      `;
+      document.getElementById('pagination').innerHTML = '';
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="listings-grid">
+        ${listings.map(renderCard).join('')}
+      </div>
+    `;
+
+    renderPagination(pagination);
+  }
+
+  function renderCard(l) {
+    const emoji = getCategoryEmoji(l.category, l.title);
+    return `
+      <div class="listing-card animate-fade-in" onclick="navigate('listing-detail.html?id=${l.id}')">
+        <div class="listing-card-image">${emoji}</div>
+        <div class="listing-card-body">
+          <div style="margin-bottom:8px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+            <span class="badge badge-${l.category}">${l.category === 'item' ? '📦 Item' : '🧠 Skill'}</span>
+            <span class="badge badge-${l.status}">${l.status}</span>
+          </div>
+          <div class="listing-card-title">${l.title}</div>
+          <div class="listing-card-desc">${l.description}</div>
+
+          <div style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">
+            <span>by ${l.full_name}</span>
+            ${l.department ? `· ${l.department}` : ''}
+          </div>
+
+          <div class="listing-card-footer">
+            <span class="listing-price">${formatPrice(l.price)}</span>
+            <div class="flex items-center gap-2 text-sm text-muted">
+              <span>🤝 ${l.interest_count}</span>
+              <span>· ${timeAgo(l.created_at)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderPagination(p) {
+    if (p.pages <= 1) { document.getElementById('pagination').innerHTML = ''; return; }
+
+    let html = '<div class="pagination">';
+    if (currentPage > 1) {
+      html += `<button class="page-btn" onclick="goPage(${currentPage-1})">‹</button>`;
+    }
+    for (let i = 1; i <= p.pages; i++) {
+      if (i === 1 || i === p.pages || Math.abs(i - currentPage) <= 2) {
+        html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="goPage(${i})">${i}</button>`;
+      } else if (Math.abs(i - currentPage) === 3) {
+        html += `<span style="padding:0 4px; color:var(--text-muted);">...</span>`;
+      }
+    }
+    if (currentPage < p.pages) {
+      html += `<button class="page-btn" onclick="goPage(${currentPage+1})">›</button>`;
+    }
+    html += '</div>';
+    document.getElementById('pagination').innerHTML = html;
+  }
+
+  function goPage(n) {
+    currentPage = n;
+    loadListings();
+    window.scrollTo(0, 0);
+  }
+
+  loadListings();
+</script>
+</body>
+</html>

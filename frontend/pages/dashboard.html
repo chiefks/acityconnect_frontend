@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard — ACITY CONNECT</title>
+  <link rel="stylesheet" href="../css/main.css" />
+</head>
+<body>
+
+<div id="app">
+  <!-- Dashboard Content (will be wrapped in layout) -->
+  <div id="welcome-banner" class="profile-header" style="margin-bottom:24px;">
+    <div class="flex items-center gap-4">
+      <div class="avatar avatar-lg" id="dash-avatar"></div>
+      <div>
+        <h2 id="welcome-text">Welcome back!</h2>
+        <div style="opacity:0.8; font-size:14px;" id="welcome-sub"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats Row -->
+  <div class="grid-4 mb-4" id="stats-grid">
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#E8F5E9;">📋</div>
+      <div>
+        <div class="stat-value" id="stat-my-listings">—</div>
+        <div class="stat-label">My Listings</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#E3F2FD;">🤝</div>
+      <div>
+        <div class="stat-value" id="stat-interests">—</div>
+        <div class="stat-label">Interests Received</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#F3E5F5;">💬</div>
+      <div>
+        <div class="stat-value" id="stat-messages">—</div>
+        <div class="stat-label">Messages</div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#FFF3E0;">🔔</div>
+      <div>
+        <div class="stat-value" id="stat-notifs">—</div>
+        <div class="stat-label">Notifications</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Listings + Quick Actions -->
+  <div style="display:grid; grid-template-columns: 1fr 280px; gap:24px;">
+
+    <!-- Recent Marketplace Activity -->
+    <div>
+      <div class="flex items-center justify-between mb-4">
+        <h3 style="font-size:16px;">Recent Listings</h3>
+        <button class="btn btn-outline btn-sm" onclick="navigate('listings.html')">View All</button>
+      </div>
+      <div id="recent-listings">
+        <div class="loading-overlay"><div class="spinner"></div></div>
+      </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div>
+      <h3 style="font-size:16px; margin-bottom:16px;">Quick Actions</h3>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <button class="btn btn-primary btn-full" onclick="navigate('create-listing.html')">
+          📦 Post an Item
+        </button>
+        <button class="btn btn-accent btn-full" onclick="navigate('create-listing.html')">
+          🧠 Offer a Skill
+        </button>
+        <button class="btn btn-outline btn-full" onclick="navigate('listings.html')">
+          🛒 Browse Marketplace
+        </button>
+        <button class="btn btn-ghost btn-full" onclick="navigate('profile.html')">
+          👤 Edit Profile
+        </button>
+        <button class="btn btn-ghost btn-full" onclick="navigate('messages.html')">
+          💬 My Messages
+        </button>
+      </div>
+
+      <!-- Pending Interactions -->
+      <div class="card" style="margin-top:20px;">
+        <h4 style="font-size:14px; margin-bottom:12px;">⏳ Pending Requests</h4>
+        <div id="pending-interactions">
+          <div style="font-size:13px; color:var(--text-muted);">Loading...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="../js/api.js"></script>
+<script src="../js/layout.js"></script>
+<script>
+  if (!requireAuth()) throw new Error('Not authenticated');
+
+  buildLayout('Dashboard');
+
+  const user = api.getUser();
+
+  // Personalize welcome
+  document.getElementById('welcome-text').textContent = `Welcome back, ${user.full_name.split(' ')[0]}! 👋`;
+  document.getElementById('welcome-sub').textContent = `${user.department || 'Student'} — ACITY CONNECT`;
+  document.getElementById('dash-avatar').textContent = avatarInitials(user.full_name);
+
+  async function loadDashboard() {
+    // Load my listings count
+    const listingsRes = await api.getMyListings();
+    if (listingsRes.ok) {
+      document.getElementById('stat-my-listings').textContent = listingsRes.data.listings.length;
+    }
+
+    // Load interactions
+    const intRes = await api.getMyInteractions();
+    if (intRes.ok) {
+      const pending = intRes.data.received.filter(i => i.status === 'pending').length;
+      document.getElementById('stat-interests').textContent = intRes.data.received.length;
+
+      // Render pending interactions
+      const container = document.getElementById('pending-interactions');
+      if (pending === 0) {
+        container.innerHTML = '<div style="font-size:13px;color:var(--text-muted);">No pending requests</div>';
+      } else {
+        const items = intRes.data.received.filter(i => i.status === 'pending').slice(0, 3);
+        container.innerHTML = items.map(i => `
+          <div style="font-size:13px; padding:8px 0; border-bottom:1px solid var(--border);">
+            <div style="font-weight:600;">${i.sender_name}</div>
+            <div style="color:var(--text-muted);">${i.listing_title}</div>
+            <div style="margin-top:4px; display:flex; gap:6px;">
+              <button class="btn btn-sm btn-primary" onclick="respondToRequest(${i.id},'accepted')">Accept</button>
+              <button class="btn btn-sm btn-ghost" onclick="respondToRequest(${i.id},'rejected')">Decline</button>
+            </div>
+          </div>
+        `).join('');
+      }
+    }
+
+    // Load notifications count
+    const notifRes = await api.getNotifications();
+    if (notifRes.ok) {
+      document.getElementById('stat-notifs').textContent = notifRes.data.unread_count || 0;
+    }
+
+    // Load recent listings
+    const res = await api.getListings({ limit: 6 });
+    const container = document.getElementById('recent-listings');
+
+    if (!res.ok || res.data.listings.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">🛒</div>
+          <h3>No listings yet</h3>
+          <p>Be the first to post something on the marketplace!</p>
+          <button class="btn btn-primary" onclick="navigate('create-listing.html')">Post a Listing</button>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="listings-grid">
+        ${res.data.listings.map(renderListingCard).join('')}
+      </div>
+    `;
+  }
+
+  function renderListingCard(listing) {
+    const emoji = getCategoryEmoji(listing.category, listing.title);
+    return `
+      <div class="listing-card animate-fade-in" onclick="navigate('listing-detail.html?id=${listing.id}')">
+        <div class="listing-card-image">${emoji}</div>
+        <div class="listing-card-body">
+          <div style="margin-bottom:6px;">
+            <span class="badge badge-${listing.category}">${listing.category}</span>
+            <span class="badge badge-${listing.status}" style="margin-left:4px;">${listing.status}</span>
+          </div>
+          <div class="listing-card-title">${listing.title}</div>
+          <div class="listing-card-desc">${listing.description}</div>
+          <div class="listing-card-footer">
+            <span class="listing-price">${formatPrice(listing.price)}</span>
+            <div class="flex items-center gap-2 text-sm text-muted">
+              <span>🤝 ${listing.interest_count}</span>
+              <span>· ${timeAgo(listing.created_at)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  async function respondToRequest(id, status) {
+    const res = await api.updateInteraction(id, status);
+    if (res.ok) loadDashboard();
+  }
+
+  loadDashboard();
+</script>
+</body>
+</html>
